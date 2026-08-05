@@ -1,0 +1,10 @@
+{
+  "name": "Remix: Registro de Estacionamiento",
+  "description": "Aplicación para el registro de entrada y salida de vehículos por tramos de tiempo, placas patente e historial de ingresos recurrentes.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

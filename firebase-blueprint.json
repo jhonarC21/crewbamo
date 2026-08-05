@@ -1,0 +1,33 @@
+{
+  "entities": {
+    "sessions": {
+      "title": "Sessions",
+      "description": "Estacionamientos activos e históricos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plate": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "entryTime": { "type": "string" },
+        "status": { "type": "string" },
+        "userId": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "plate", "entryTime", "status"]
+    },
+    "inventory": {
+      "title": "Inventario",
+      "description": "Productos y accesorios de tienda",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "userId": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "price", "stock"]
+    }
+  }
+}
