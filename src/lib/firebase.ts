@@ -10,6 +10,7 @@ import {
 import { 
   getFirestore, 
   collection, 
+  collectionGroup,
   doc, 
   setDoc, 
   getDoc, 
@@ -20,6 +21,7 @@ import {
 } from 'firebase/firestore';
 
 import firebaseAppletConfig from '../../firebase-applet-config.json';
+import { supabaseDbService, isSupabaseConfigured } from './supabase';
 
 // Obtener las variables de entorno de Firebase o usar la configuración del applet
 const env = (import.meta as any).env || {};
@@ -152,6 +154,20 @@ export const authService = {
     }
   },
 
+  // Obtener usuario actualmente autenticado (o desde almacenamiento local)
+  getCurrentUser: () => {
+    if (isFirebaseConfigured && auth?.currentUser) {
+      return {
+        uid: auth.currentUser.uid,
+        email: auth.currentUser.email,
+        displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0],
+        isFirebase: true
+      };
+    }
+    const stored = localStorage.getItem('fb_fallback_user');
+    return stored ? JSON.parse(stored) : null;
+  },
+
   // Cerrar sesión
   signOut: async (): Promise<void> => {
     if (isFirebaseConfigured && auth) {
@@ -164,11 +180,17 @@ export const authService = {
 };
 
 /**
- * Servicio de base de datos en la nube (Firestore) con Fallback en localStorage por usuario
+ * Servicio de base de datos en la nube (Supabase / Firestore) con Fallback en localStorage por usuario
  */
 export const dbService = {
   // Guardar un documento asociado a un usuario
   saveDocument: async (collectionName: string, docId: string, data: any, userId: string): Promise<void> => {
+    // 1. Guardar en Supabase si está configurado
+    if (isSupabaseConfigured()) {
+      await supabaseDbService.saveDocument(collectionName, docId, data, userId);
+    }
+
+    // 2. Guardar en Firestore si está configurado
     if (isFirebaseConfigured && db) {
       try {
         const docRef = doc(db, `users/${userId}/${collectionName}`, docId);
@@ -179,7 +201,6 @@ export const dbService = {
         }, { merge: true });
       } catch (err) {
         console.error(`Error guardando documento en ${collectionName}:`, err);
-        // Fallback inmediato a almacenamiento local específico del usuario en caso de error
         saveLocalUserDocument(collectionName, docId, data, userId);
       }
     } else {
@@ -189,6 +210,10 @@ export const dbService = {
 
   // Eliminar un documento asociado a un usuario
   deleteDocument: async (collectionName: string, docId: string, userId: string): Promise<void> => {
+    if (isSupabaseConfigured()) {
+      await supabaseDbService.deleteDocument(collectionName, docId, userId);
+    }
+
     if (isFirebaseConfigured && db) {
       try {
         const docRef = doc(db, `users/${userId}/${collectionName}`, docId);
@@ -204,23 +229,121 @@ export const dbService = {
 
   // Obtener toda la colección de un usuario
   getCollection: async (collectionName: string, userId: string): Promise<any[]> => {
+    // Intentar primero desde Supabase si está configurado
+    if (isSupabaseConfigured()) {
+      const supaDocs = await supabaseDbService.getCollection(collectionName, userId);
+      if (supaDocs && supaDocs.length > 0) {
+        localStorage.setItem(`fb_cache_${userId}_${collectionName}`, JSON.stringify(supaDocs));
+        return supaDocs;
+      }
+    }
+
+    // Intentar con Firestore si no
     if (isFirebaseConfigured && db) {
       try {
         const colRef = collection(db, `users/${userId}/${collectionName}`);
         const snapshot = await getDocs(colRef);
         const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         
-        // Si Firestore tiene datos, actualizamos el caché local para disponibilidad offline
         localStorage.setItem(`fb_cache_${userId}_${collectionName}`, JSON.stringify(docs));
         return docs;
       } catch (err) {
         console.error(`Error obteniendo colección de ${collectionName}:`, err);
-        // Fallback a caché local
         return getLocalUserCollection(collectionName, userId);
       }
     } else {
       return getLocalUserCollection(collectionName, userId);
     }
+  },
+
+  // Buscar sesión de vehículo por patente en toda la base de datos (público / clientes sin login)
+  searchSessionByPlate: async (plateText: string): Promise<{ parking: any | null; wash: any | null }> => {
+    const cleanPlate = plateText.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanPlate) return { parking: null, wash: null };
+
+    // Búsqueda prioritaria en Supabase en tiempo real
+    if (isSupabaseConfigured()) {
+      const supaRes = await supabaseDbService.searchSessionByPlate(cleanPlate);
+      if (supaRes.parking || supaRes.wash) {
+        return supaRes;
+      }
+    }
+
+    let foundParking: any = null;
+    let foundWash: any = null;
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const sessionsGroup = collectionGroup(db, 'sessions');
+        const sessionSnap = await getDocs(query(sessionsGroup));
+        
+        for (const docSnap of sessionSnap.docs) {
+          const data = docSnap.data();
+          if (data && data.plate) {
+            const norm = data.plate.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (norm === cleanPlate) {
+              if (!foundParking || data.status === 'active') {
+                foundParking = { ...data, id: docSnap.id };
+              }
+            }
+          }
+        }
+
+        const washGroup = collectionGroup(db, 'washSessions');
+        const washSnap = await getDocs(query(washGroup));
+
+        for (const docSnap of washSnap.docs) {
+          const data = docSnap.data();
+          if (data && data.plate) {
+            const norm = data.plate.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (norm === cleanPlate) {
+              if (!foundWash || data.status !== 'entregado') {
+                foundWash = { ...data, id: docSnap.id };
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error buscando sesión por patente en Firestore:", err);
+      }
+    }
+
+    // Fallback: búsqueda en localStorage local (por si la app está offline o datos locales)
+    if (!foundParking || !foundWash) {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('sessions') || key.includes('washes') || key.includes('fb_cache') || key.includes('estacionamiento'))) {
+            const itemStr = localStorage.getItem(key);
+            if (!itemStr) continue;
+            try {
+              const parsed = JSON.parse(itemStr);
+              if (Array.isArray(parsed)) {
+                for (const item of parsed) {
+                  if (item && item.plate) {
+                    const norm = item.plate.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    if (norm === cleanPlate) {
+                      if (item.entryTime && (!foundParking || item.status === 'active')) {
+                        foundParking = item;
+                      }
+                      if ((item.packageId || item.washPackageId) && (!foundWash || item.status !== 'entregado')) {
+                        foundWash = item;
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // ignora objetos no JSON
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error buscando sesión en localStorage:", e);
+      }
+    }
+
+    return { parking: foundParking, wash: foundWash };
   }
 };
 

@@ -21,7 +21,9 @@ import AuthScreen from './components/AuthScreen';
 import { ServiceQuotes } from './components/ServiceQuotes';
 import { NightParkingManagement } from './components/NightParkingManagement';
 import VehicleDatabase from './components/VehicleDatabase';
+import SupabaseConfigModal from './components/SupabaseConfigModal';
 import { authService, dbService, isFirebaseConfigured } from './lib/firebase';
+import { supabaseDbService, isSupabaseConfigured } from './lib/supabase';
 import { 
   Car, 
   Clock, 
@@ -96,6 +98,49 @@ export default function App() {
   const [selectedUserToSwitch, setSelectedUserToSwitch] = useState<AppUser | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+
+  // Estado y Modal de Supabase (Realtime Sync)
+  const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [supabaseActive, setSupabaseActive] = useState<boolean>(() => isSupabaseConfigured());
+
+  useEffect(() => {
+    const handleConfigChange = () => {
+      setSupabaseActive(isSupabaseConfigured());
+    };
+    window.addEventListener('supabase_config_changed', handleConfigChange);
+    return () => window.removeEventListener('supabase_config_changed', handleConfigChange);
+  }, []);
+
+  // Suscripción a cambios en tiempo real con Supabase entre dispositivos
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const currentUserId = fbUser?.uid || 'global';
+
+    const unsubSessions = supabaseDbService.subscribeToCollection('sessions', currentUserId, (updatedSessions) => {
+      if (updatedSessions && updatedSessions.length > 0) {
+        setSessions(updatedSessions);
+      }
+    });
+
+    const unsubCash = supabaseDbService.subscribeToCollection('cashSessions', currentUserId, (updatedCash) => {
+      if (updatedCash && updatedCash.length > 0) {
+        setCashSessions(updatedCash);
+      }
+    });
+
+    const unsubInventory = supabaseDbService.subscribeToCollection('inventory', currentUserId, (updatedInventory) => {
+      if (updatedInventory && updatedInventory.length > 0) {
+        setInventory(updatedInventory);
+      }
+    });
+
+    return () => {
+      if (typeof unsubSessions === 'function') unsubSessions();
+      if (typeof unsubCash === 'function') unsubCash();
+      if (typeof unsubInventory === 'function') unsubInventory();
+    };
+  }, [fbUser?.uid, supabaseActive]);
 
   // Estado de bloqueo de pantalla
   const [isAppLocked, setIsAppLocked] = useState<boolean>(true);
@@ -1125,6 +1170,21 @@ export default function App() {
               <Lock className="w-4 h-4 text-blue-500" />
             </button>
 
+            {/* Botón de Configuración Supabase */}
+            <button
+              onClick={() => setShowSupabaseModal(true)}
+              className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all cursor-pointer ${
+                supabaseActive
+                  ? 'bg-emerald-950/60 border-emerald-800/80 text-emerald-300 hover:bg-emerald-900/60'
+                  : 'bg-slate-900 border-amber-800/60 text-amber-300 hover:bg-slate-800'
+              }`}
+              title="Configurar Supabase (Sincronización en tiempo real)"
+            >
+              <Database className={`w-3.5 h-3.5 ${supabaseActive ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`} />
+              <span className="hidden md:inline">Supabase DB</span>
+              <span className={`w-2 h-2 rounded-full ${supabaseActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            </button>
+
             {/* Botón para cerrar sesión en la nube */}
             <button
               onClick={async () => {
@@ -1544,6 +1604,7 @@ export default function App() {
                 showLogoInHeader={showLogoInHeader}
                 showLogoInTicket={showLogoInTicket}
                 onUpdateLogoSettings={handleUpdateLogoSettings}
+                onOpenSupabaseModal={() => setShowSupabaseModal(true)}
               />
             )}
           </>
@@ -1646,6 +1707,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Modal de Configuración e Integración con Supabase */}
+      <SupabaseConfigModal 
+        isOpen={showSupabaseModal}
+        onClose={() => setShowSupabaseModal(false)}
+      />
 
     </div>
   );

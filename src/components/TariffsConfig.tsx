@@ -47,6 +47,7 @@ interface TariffsConfigProps {
   showLogoInHeader: boolean;
   showLogoInTicket: boolean;
   onUpdateLogoSettings: (logo: string, showHeader: boolean, showTicket: boolean) => void;
+  onOpenSupabaseModal?: () => void;
 }
 
 export default function TariffsConfig({
@@ -63,7 +64,8 @@ export default function TariffsConfig({
   companyLogo,
   showLogoInHeader,
   showLogoInTicket,
-  onUpdateLogoSettings
+  onUpdateLogoSettings,
+  onOpenSupabaseModal
 }: TariffsConfigProps) {
   
   // State locales para configuración
@@ -263,6 +265,31 @@ export default function TariffsConfig({
         {/* Columna Izquierda: Configuración Financiera y Capacidad */}
         <div className="lg:col-span-1 space-y-6">
           
+          {/* Tarjeta Sincronización Supabase */}
+          <div className="bg-slate-950/40 p-6 rounded-2xl border border-emerald-900/40 shadow-2xl space-y-4 backdrop-blur-md relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-white text-sm flex items-center gap-1.5 uppercase tracking-wider">
+                <Database className="w-4 h-4 text-emerald-400" />
+                Base de Datos Supabase
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Tiempo Real
+              </span>
+            </div>
+            
+            <p className="text-slate-400 text-xs leading-relaxed">
+              Conecta tu proyecto de Supabase para sincronizar la información pública y privada entre múltiples dispositivos al instante.
+            </p>
+
+            <button
+              onClick={onOpenSupabaseModal}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition-all shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Database className="w-4 h-4" />
+              Configurar URL y Anon Key
+            </button>
+          </div>
+
           {/* Tarjeta Capacidad */}
           <div className="bg-slate-950/40 p-6 rounded-2xl border border-slate-800/80 shadow-2xl space-y-4 backdrop-blur-md">
             <h3 className="font-bold text-white text-sm flex items-center gap-1.5 uppercase tracking-wider">

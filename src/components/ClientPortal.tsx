@@ -44,6 +44,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { dbService } from '../lib/firebase';
 
 interface ClientPortalProps {
   sessions: ParkingSession[];
@@ -68,6 +69,7 @@ export default function ClientPortal({
   const [activeSession, setActiveSession] = useState<ParkingSession | null>(null);
   const [washSession, setWashSession] = useState<WashSession | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -390,42 +392,70 @@ export default function ClientPortal({
 
   // Fetch the real-time session when list of sessions or searchPlate changes
   useEffect(() => {
+    let isMounted = true;
+
     if (!searchPlate.trim()) {
       setActiveSession(null);
       setWashSession(null);
       setNotFound(false);
+      setIsSearching(false);
       return;
     }
 
     const cleanPlate = searchPlate.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     
-    // Find active parking session first, fallback to completed if not active
-    const parking = sessions.find(s => s.plate.replace(/[^A-Z0-9]/g, '') === cleanPlate && s.status === 'active')
+    // Find active parking session first locally
+    const localParking = sessions.find(s => s.plate.replace(/[^A-Z0-9]/g, '') === cleanPlate && s.status === 'active')
       || sessions.find(s => s.plate.replace(/[^A-Z0-9]/g, '') === cleanPlate && s.status === 'completed');
 
     // Find wash session from localstorage
     const storedWashes = localStorage.getItem('estacionamiento_washes');
-    let wash: WashSession | null = null;
+    let localWash: WashSession | null = null;
     if (storedWashes) {
       try {
         const washes: WashSession[] = JSON.parse(storedWashes);
-        // Find the active/recent wash for this plate
-        wash = washes.find(w => w.plate.replace(/[^A-Z0-9]/g, '') === cleanPlate && w.status !== 'entregado')
+        localWash = washes.find(w => w.plate.replace(/[^A-Z0-9]/g, '') === cleanPlate && w.status !== 'entregado')
           || washes.find(w => w.plate.replace(/[^A-Z0-9]/g, '') === cleanPlate);
       } catch (e) {
         console.error('Error loading washes in portal:', e);
       }
     }
 
-    if (parking || wash) {
-      setActiveSession(parking || null);
-      setWashSession(wash || null);
+    if (localParking || localWash) {
+      setActiveSession(localParking || null);
+      setWashSession(localWash || null);
       setNotFound(false);
-    } else {
-      setActiveSession(null);
-      setWashSession(null);
-      setNotFound(true);
     }
+
+    // Always perform async search on database/Firestore to ensure remote devices (mobile scans) get the data
+    setIsSearching(true);
+    dbService.searchSessionByPlate(cleanPlate).then(remote => {
+      if (!isMounted) return;
+      setIsSearching(false);
+
+      const finalParking = localParking || remote.parking || null;
+      const finalWash = localWash || remote.wash || null;
+
+      if (finalParking || finalWash) {
+        setActiveSession(finalParking);
+        setWashSession(finalWash);
+        setNotFound(false);
+      } else {
+        setActiveSession(null);
+        setWashSession(null);
+        setNotFound(true);
+      }
+    }).catch(err => {
+      if (!isMounted) return;
+      setIsSearching(false);
+      if (!localParking && !localWash) {
+        setNotFound(true);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [searchPlate, sessions]);
 
   // Handle URL change or initial plate detection
@@ -852,8 +882,20 @@ export default function ClientPortal({
               </div>
             </div>
 
+            {/* SEARCHING LOADER */}
+            {isSearching && !activeSession && !washSession && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-8 bg-slate-900/60 border border-blue-900/40 rounded-2xl text-center space-y-3"
+              >
+                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs font-semibold text-blue-300">Buscando vehículo en tiempo real en el sistema...</p>
+              </motion.div>
+            )}
+
             {/* NOT FOUND SCREEN */}
-            {notFound && searchPlate.trim() && (
+            {!isSearching && notFound && searchPlate.trim() && (
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}

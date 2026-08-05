@@ -20,6 +20,7 @@ import {
   getVehicleTypeLabel,
   DEFAULT_WASH_PACKAGES
 } from '../utils/parkingUtils';
+import { dbService, authService } from '../lib/firebase';
 import VehiclePhotoCapture from './VehiclePhotoCapture';
 import PaymentGatewayModal from './PaymentGatewayModal';
 import { 
@@ -191,6 +192,14 @@ export default function CarWashManagement({
   const saveWashes = (updated: WashSession[]) => {
     setWashSessions(updated);
     localStorage.setItem('estacionamiento_washes', JSON.stringify(updated));
+
+    // Sincronizar en Firestore para consultas desde QR móvil
+    const user = authService.getCurrentUser();
+    if (user && user.uid) {
+      updated.forEach(ws => {
+        dbService.saveDocument('washSessions', ws.id, ws, user.uid);
+      });
+    }
   };
 
   // Save packages helper
