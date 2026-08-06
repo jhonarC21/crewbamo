@@ -61,6 +61,13 @@ interface CarWashManagementProps {
   settings: TariffSettings;
   isCashOpen: boolean;
   onSellAccessory: (sale: Omit<AccessorySale, 'id' | 'timestamp'>) => void;
+  onRegisterVehiclePlate?: (info: {
+    plate: string;
+    vehicleType?: VehicleType;
+    clientName?: string;
+    clientPhone?: string;
+    notes?: string;
+  }) => void;
 }
 
 const SEED_WASHES: WashSession[] = [];
@@ -70,7 +77,8 @@ export default function CarWashManagement({
   accessorySales,
   settings,
   isCashOpen,
-  onSellAccessory
+  onSellAccessory,
+  onRegisterVehiclePlate
 }: CarWashManagementProps) {
   
   // Active washes list
@@ -234,6 +242,17 @@ export default function CarWashManagement({
     const updated = [newSession, ...washSessions];
     saveWashes(updated);
     
+    // Auto-registrar patente en la Base de Datos de Vehículos
+    if (onRegisterVehiclePlate) {
+      onRegisterVehiclePlate({
+        plate: finalPlate,
+        vehicleType: selectedVehicleType,
+        clientName: clientName.trim() || undefined,
+        clientPhone: clientPhone.trim() || undefined,
+        notes: notes.trim() ? `Lavado (${pkg.name}): ${notes.trim()}` : `Servicio de Lavado (${pkg.name})`
+      });
+    }
+
     // Reset Form
     setManualPlate('');
     setClientName('');

@@ -17,7 +17,8 @@ import {
   getDocs, 
   deleteDoc, 
   query, 
-  where 
+  where,
+  onSnapshot
 } from 'firebase/firestore';
 
 import firebaseAppletConfig from '../../firebase-applet-config.json';
@@ -364,12 +365,36 @@ export const dbService = {
     return { parking: foundParking, wash: foundWash };
   },
 
-  // Suscribirse a cambios en tiempo real en la colección
+  // Suscribirse a cambios en tiempo real en la colección (unifica datos en diferentes dispositivos)
   subscribeToCollection: (collectionName: string, userId: string, onUpdate: (docs: any[]) => void) => {
+    const unsubs: (() => void)[] = [];
+
     if (isSupabaseConfigured()) {
-      return supabaseDbService.subscribeToCollection(collectionName, userId, onUpdate);
+      const unsubSupa = supabaseDbService.subscribeToCollection(collectionName, userId, onUpdate);
+      if (typeof unsubSupa === 'function') unsubs.push(unsubSupa);
     }
-    return () => {};
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const colRef = collection(db, `users/${userId}/${collectionName}`);
+        const unsubFS = onSnapshot(colRef, (snapshot) => {
+          const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          localStorage.setItem(`fb_cache_${userId}_${collectionName}`, JSON.stringify(docs));
+          onUpdate(docs);
+        }, (err) => {
+          console.warn(`[Firestore Realtime] Error en ${collectionName}:`, err);
+        });
+        unsubs.push(unsubFS);
+      } catch (err) {
+        console.warn(`[Firestore Realtime] Excepción al suscribir a ${collectionName}:`, err);
+      }
+    }
+
+    return () => {
+      unsubs.forEach(fn => {
+        try { fn(); } catch (e) {}
+      });
+    };
   }
 };
 
