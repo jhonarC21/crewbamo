@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
   collection, 
   collectionGroup,
   doc, 
@@ -52,11 +53,21 @@ if (isFirebaseConfigured) {
   try {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     auth = getAuth(app);
-    db = firebaseConfig.firestoreDatabaseId 
-      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-      : getFirestore(app);
+    try {
+      const settings = {
+        experimentalAutoDetectLongPolling: true,
+        ignoreUndefinedProperties: true,
+      };
+      db = firebaseConfig.firestoreDatabaseId 
+        ? initializeFirestore(app, settings, firebaseConfig.firestoreDatabaseId)
+        : initializeFirestore(app, settings);
+    } catch (e) {
+      db = firebaseConfig.firestoreDatabaseId 
+        ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+        : getFirestore(app);
+    }
   } catch (error) {
-    console.error("Error al inicializar Firebase:", error);
+    console.warn("Error al inicializar Firebase:", error);
   }
 }
 
@@ -180,14 +191,39 @@ export const authService = {
 };
 
 /**
+ * Sanitiza de forma segura un objeto removiendo valores `undefined`
+ * para evitar fallos de Firestore (Unsupported field value: undefined) y Supabase
+ */
+function sanitizeData(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeData(item));
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = sanitizeData(value);
+    }
+  }
+  return clean;
+}
+
+/**
  * Servicio de base de datos en la nube (Supabase / Firestore) con Fallback en localStorage por usuario
  */
 export const dbService = {
   // Guardar un documento asociado a un usuario
   saveDocument: async (collectionName: string, docId: string, data: any, userId: string): Promise<void> => {
+    const cleanData = sanitizeData(data) || {};
+
     // 1. Guardar en Supabase si está configurado
     if (isSupabaseConfigured()) {
-      await supabaseDbService.saveDocument(collectionName, docId, data, userId);
+      await supabaseDbService.saveDocument(collectionName, docId, cleanData, userId);
     }
 
     // 2. Guardar en Firestore si está configurado
@@ -195,16 +231,16 @@ export const dbService = {
       try {
         const docRef = doc(db, `users/${userId}/${collectionName}`, docId);
         await setDoc(docRef, {
-          ...data,
+          ...cleanData,
           userId,
           updatedAt: new Date().toISOString()
         }, { merge: true });
       } catch (err) {
         console.error(`Error guardando documento en ${collectionName}:`, err);
-        saveLocalUserDocument(collectionName, docId, data, userId);
+        saveLocalUserDocument(collectionName, docId, cleanData, userId);
       }
     } else {
-      saveLocalUserDocument(collectionName, docId, data, userId);
+      saveLocalUserDocument(collectionName, docId, cleanData, userId);
     }
   },
 
