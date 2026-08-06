@@ -713,7 +713,9 @@ export default function TariffsConfig({
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-1 flex items-center gap-1">
                   Hora Adicional (Costo Lineal)
-                  <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" title="Se aplica para calcular cobros después de que se exceden todos los tramos configurados." />
+                  <span title="Se aplica para calcular cobros después de que se exceden todos los tramos configurados.">
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
+                  </span>
                 </label>
                 <input
                   type="number"
@@ -728,7 +730,9 @@ export default function TariffsConfig({
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-1 flex items-center gap-1">
                   Fracción Mínima (Minutos)
-                  <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" title="Minutos mínimos por fracción para el cálculo lineal de hora simple." />
+                  <span title="Minutos mínimos por fracción para el cálculo lineal de hora simple.">
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
+                  </span>
                 </label>
                 <input
                   type="number"

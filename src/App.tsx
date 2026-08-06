@@ -22,6 +22,7 @@ import { ServiceQuotes } from './components/ServiceQuotes';
 import { NightParkingManagement } from './components/NightParkingManagement';
 import VehicleDatabase from './components/VehicleDatabase';
 import SupabaseConfigModal from './components/SupabaseConfigModal';
+import AIChatModal from './components/AIChatModal';
 import { authService, dbService, isFirebaseConfigured } from './lib/firebase';
 import { supabaseDbService, isSupabaseConfigured } from './lib/supabase';
 import { 
@@ -48,7 +49,10 @@ import {
   Calendar,
   LogOut,
   FileText,
-  Moon
+  Moon,
+  Bot,
+  Sparkles,
+  MessageSquare
 } from 'lucide-react';
 
 const DEFAULT_USERS: AppUser[] = [
@@ -101,6 +105,7 @@ export default function App() {
 
   // Estado y Modal de Supabase (Realtime Sync)
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [showAIChatModal, setShowAIChatModal] = useState(false);
   const [supabaseActive, setSupabaseActive] = useState<boolean>(() => isSupabaseConfigured());
 
   useEffect(() => {
@@ -204,30 +209,40 @@ export default function App() {
 
   // Suscribirse al estado de Autenticación de Firebase/Local
   useEffect(() => {
-    const unsubscribe = authService.onAuthChange((user) => {
-      setFbUser(user);
-      if (user) {
-        loadUserData(user.uid);
-      } else {
-        setSessions([]);
-        setSettings(getDefaultTariffSettings());
-        setCapacity(20);
-        setCashSessions([]);
-        setInventory([]);
-        setAccessorySales([]);
-        setBookings([]);
-        setQuotes([]);
-        setNightSubscriptions([]);
-        const cachedVR = localStorage.getItem('estacionamiento_vehicle_records');
-        setVehicleRecords(cachedVR ? JSON.parse(cachedVR) : getSeedVehicleRecords());
-        setUsers(DEFAULT_USERS);
-        setCurrentUser(DEFAULT_USERS[0]);
+    let authUnsubscribe: (() => void) | null = null;
+    let isMounted = true;
+
+    // Timer de seguridad: si en 2.5 segundos no ha finalizado la carga, forzar la apertura de la interfaz base
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) {
+        console.warn("[App] Tiempo de sincronización agotado. Continuando con la interfaz base local...");
         setLoadingData(false);
       }
-    });
+    }, 2500);
+
+    try {
+      authUnsubscribe = authService.onAuthChange((user) => {
+        if (!isMounted) return;
+        setFbUser(user);
+        const activeUid = user ? user.uid : 'global';
+        loadUserData(activeUid).finally(() => {
+          if (isMounted) setLoadingData(false);
+        });
+      });
+    } catch (err) {
+      console.warn("Fallo al iniciar onAuthChange:", err);
+      if (isMounted) {
+        loadUserData('global').finally(() => {
+          if (isMounted) setLoadingData(false);
+        });
+      }
+    }
+
     return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
+      isMounted = false;
+      clearTimeout(safetyTimer);
+      if (typeof authUnsubscribe === 'function') {
+        authUnsubscribe();
       }
     };
   }, []);
@@ -235,126 +250,181 @@ export default function App() {
   const loadUserData = async (uid: string) => {
     setLoadingData(true);
     try {
-      // 1. Sessions
-      let s = await dbService.getCollection('sessions', uid);
-      if (s.length === 0) {
-        const seeds = getSeedSessions();
-        for (const session of seeds) {
-          await dbService.saveDocument('sessions', session.id, session, uid);
+      const activeUid = uid || 'global';
+
+      // 1. Sessions - Consulta SELECT obligatoria a la base de datos online
+      try {
+        const s = await dbService.getCollection('sessions', activeUid);
+        if (s && Array.isArray(s)) {
+          setSessions(s);
+        } else if (!isSupabaseConfigured()) {
+          setSessions(getSeedSessions());
+        } else {
+          setSessions([]);
         }
-        s = seeds;
+      } catch (err) {
+        console.warn("Error cargando sessions desde la nube:", err);
+        setSessions([]);
       }
-      setSessions(s);
 
       // 2. Settings
-      const settingsCol = await dbService.getCollection('settings', uid);
-      let sSettings = settingsCol.find(d => d.id === 'config');
-      if (!sSettings) {
-        const defaults = getDefaultTariffSettings();
-        await dbService.saveDocument('settings', 'config', defaults, uid);
-        sSettings = { ...defaults, id: 'config' };
-      } else {
-        // Asegurarnos de remover la propiedad id que Firestore agrega al mapear
-        const { id, userId, updatedAt, ...cleanSet } = sSettings as any;
-        sSettings = cleanSet;
+      try {
+        const settingsCol = await dbService.getCollection('settings', activeUid);
+        let sSettings = settingsCol ? settingsCol.find(d => d.id === 'config') : null;
+        if (!sSettings) {
+          const defaults = getDefaultTariffSettings();
+          dbService.saveDocument('settings', 'config', defaults, activeUid).catch(() => {});
+          sSettings = { ...defaults, id: 'config' };
+        } else {
+          const { id, userId, updatedAt, ...cleanSet } = sSettings as any;
+          sSettings = cleanSet;
+        }
+        setSettings(sSettings as any);
+      } catch (err) {
+        console.warn("Error cargando settings:", err);
+        setSettings(getDefaultTariffSettings());
       }
-      setSettings(sSettings as any);
 
       // 3. Capacity
-      const capacityCol = await dbService.getCollection('capacity', uid);
-      let sCapacity = capacityCol.find(d => d.id === 'config');
-      if (!sCapacity) {
-        await dbService.saveDocument('capacity', 'config', { value: 20 }, uid);
-        sCapacity = { value: 20, id: 'config' };
+      try {
+        const capacityCol = await dbService.getCollection('capacity', activeUid);
+        let sCapacity = capacityCol ? capacityCol.find(d => d.id === 'config') : null;
+        if (!sCapacity) {
+          dbService.saveDocument('capacity', 'config', { value: 20 }, activeUid).catch(() => {});
+          sCapacity = { value: 20, id: 'config' };
+        }
+        setCapacity((sCapacity as any).value || 20);
+      } catch (err) {
+        console.warn("Error cargando capacity:", err);
+        setCapacity(20);
       }
-      setCapacity((sCapacity as any).value || 20);
 
       // 4. Cash Sessions
-      let cs = await dbService.getCollection('cashSessions', uid);
-      if (cs.length === 0) {
-        const seedCash = getSeedCashSessions();
-        for (const session of seedCash) {
-          await dbService.saveDocument('cashSessions', session.id, session, uid);
+      try {
+        let cs = await dbService.getCollection('cashSessions', activeUid);
+        if (!cs || cs.length === 0) {
+          const seedCash = getSeedCashSessions();
+          seedCash.forEach(session => {
+            dbService.saveDocument('cashSessions', session.id, session, activeUid).catch(() => {});
+          });
+          cs = seedCash;
         }
-        cs = seedCash;
+        setCashSessions(cs);
+      } catch (err) {
+        console.warn("Error cargando cashSessions:", err);
+        setCashSessions(getSeedCashSessions());
       }
-      setCashSessions(cs);
 
       // 5. Inventory
-      let inv = await dbService.getCollection('inventory', uid);
-      if (inv.length === 0) {
-        const seedInv = getSeedInventoryItems();
-        for (const item of seedInv) {
-          await dbService.saveDocument('inventory', item.id, item, uid);
+      try {
+        let inv = await dbService.getCollection('inventory', activeUid);
+        if (!inv || inv.length === 0) {
+          const seedInv = getSeedInventoryItems();
+          seedInv.forEach(item => {
+            dbService.saveDocument('inventory', item.id, item, activeUid).catch(() => {});
+          });
+          inv = seedInv;
         }
-        inv = seedInv;
+        setInventory(inv);
+      } catch (err) {
+        console.warn("Error cargando inventory:", err);
+        setInventory(getSeedInventoryItems());
       }
-      setInventory(inv);
 
       // 6. Accessory Sales
-      let sales = await dbService.getCollection('accessorySales', uid);
-      if (sales.length === 0) {
-        const seedSales = getSeedAccessorySales();
-        for (const sale of seedSales) {
-          await dbService.saveDocument('accessorySales', sale.id, sale, uid);
+      try {
+        let sales = await dbService.getCollection('accessorySales', activeUid);
+        if (!sales || sales.length === 0) {
+          const seedSales = getSeedAccessorySales();
+          seedSales.forEach(sale => {
+            dbService.saveDocument('accessorySales', sale.id, sale, activeUid).catch(() => {});
+          });
+          sales = seedSales;
         }
-        sales = seedSales;
+        setAccessorySales(sales);
+      } catch (err) {
+        console.warn("Error cargando accessorySales:", err);
+        setAccessorySales(getSeedAccessorySales());
       }
-      setAccessorySales(sales);
 
       // 7. Bookings
-      let bk = await dbService.getCollection('bookings', uid);
-      if (bk.length === 0) {
-        const seedBookings = getSeedBookings();
-        for (const booking of seedBookings) {
-          await dbService.saveDocument('bookings', booking.id, booking, uid);
+      try {
+        let bk = await dbService.getCollection('bookings', activeUid);
+        if (!bk || bk.length === 0) {
+          const seedBookings = getSeedBookings();
+          seedBookings.forEach(booking => {
+            dbService.saveDocument('bookings', booking.id, booking, activeUid).catch(() => {});
+          });
+          bk = seedBookings;
         }
-        bk = seedBookings;
+        setBookings(bk);
+      } catch (err) {
+        console.warn("Error cargando bookings:", err);
+        setBookings(getSeedBookings());
       }
-      setBookings(bk);
 
       // 8. Quotes
-      let qCol = await dbService.getCollection('quotes', uid);
-      if (qCol.length === 0) {
-        const seedQ = getSeedQuotes();
-        for (const q of seedQ) {
-          await dbService.saveDocument('quotes', q.id, q, uid);
+      try {
+        let qCol = await dbService.getCollection('quotes', activeUid);
+        if (!qCol || qCol.length === 0) {
+          const seedQ = getSeedQuotes();
+          seedQ.forEach(q => {
+            dbService.saveDocument('quotes', q.id, q, activeUid).catch(() => {});
+          });
+          qCol = seedQ;
         }
-        qCol = seedQ;
+        setQuotes(qCol as ServiceQuote[]);
+      } catch (err) {
+        console.warn("Error cargando quotes:", err);
+        setQuotes(getSeedQuotes());
       }
-      setQuotes(qCol as ServiceQuote[]);
 
       // 9. Night Subscriptions
-      let nsCol = await dbService.getCollection('nightSubscriptions', uid);
-      if (nsCol.length === 0) {
-        const seedNS = getSeedNightSubscriptions();
-        for (const ns of seedNS) {
-          await dbService.saveDocument('nightSubscriptions', ns.id, ns, uid);
+      try {
+        let nsCol = await dbService.getCollection('nightSubscriptions', activeUid);
+        if (!nsCol || nsCol.length === 0) {
+          const seedNS = getSeedNightSubscriptions();
+          seedNS.forEach(ns => {
+            dbService.saveDocument('nightSubscriptions', ns.id, ns, activeUid).catch(() => {});
+          });
+          nsCol = seedNS;
         }
-        nsCol = seedNS;
+        setNightSubscriptions(nsCol as NightSubscription[]);
+      } catch (err) {
+        console.warn("Error cargando nightSubscriptions:", err);
+        setNightSubscriptions(getSeedNightSubscriptions());
       }
-      setNightSubscriptions(nsCol as NightSubscription[]);
 
-      // 10. Vehicle Records (Base de Datos de Patentes)
-      let vrCol = await dbService.getCollection('vehicleRecords', uid);
-      if (vrCol.length === 0) {
-        const seedVR = getSeedVehicleRecords();
-        for (const vr of seedVR) {
-          await dbService.saveDocument('vehicleRecords', vr.id, vr, uid);
+      // 10. Vehicle Records (Base de Datos de Patentes) - SELECT obligatorio a Supabase
+      try {
+        const vrCol = await dbService.getCollection('vehicleRecords', activeUid);
+        if (vrCol && Array.isArray(vrCol) && vrCol.length > 0) {
+          setVehicleRecords(vrCol as VehicleRecord[]);
+        } else if (vrCol && Array.isArray(vrCol) && vrCol.length === 0) {
+          setVehicleRecords([]);
+        } else {
+          setVehicleRecords(getSeedVehicleRecords());
         }
-        vrCol = seedVR;
+      } catch (err) {
+        console.warn("Error cargando vehicleRecords desde la nube:", err);
+        setVehicleRecords(getSeedVehicleRecords());
       }
-      setVehicleRecords(vrCol as VehicleRecord[]);
 
-      // 11. Users list (managed sub-users for local locking)
-      const usersCol = await dbService.getCollection('users', uid);
-      let sUsers = usersCol.find(d => d.id === 'list');
-      if (!sUsers) {
-        await dbService.saveDocument('users', 'list', { list: DEFAULT_USERS }, uid);
-        sUsers = { list: DEFAULT_USERS, id: 'list' };
+      // 11. Users list
+      try {
+        const usersCol = await dbService.getCollection('users', activeUid);
+        let sUsers = usersCol ? usersCol.find(d => d.id === 'list') : null;
+        if (!sUsers) {
+          dbService.saveDocument('users', 'list', { list: DEFAULT_USERS }, activeUid).catch(() => {});
+          sUsers = { list: DEFAULT_USERS, id: 'list' };
+        }
+        setUsers((sUsers as any).list || DEFAULT_USERS);
+        setCurrentUser(((sUsers as any).list || DEFAULT_USERS)[0] || DEFAULT_USERS[0]);
+      } catch (err) {
+        console.warn("Error cargando usuarios:", err);
+        setUsers(DEFAULT_USERS);
+        setCurrentUser(DEFAULT_USERS[0]);
       }
-      setUsers((sUsers as any).list || DEFAULT_USERS);
-      setCurrentUser(((sUsers as any).list || DEFAULT_USERS)[0] || DEFAULT_USERS[0]);
 
     } catch (err) {
       console.error("Error al cargar datos desde Firebase/Cache:", err);
@@ -371,6 +441,66 @@ export default function App() {
     return () => clearInterval(clockTimer);
   }, []);
 
+  // Sincronización en tiempo real y Polling continuo entre Celulares y Computadoras
+  useEffect(() => {
+    const activeUid = fbUser?.uid || 'global';
+    let isMounted = true;
+
+    // 1. Suscripción vía Supabase Realtime para sesiones y lista de vehículos
+    const unsubscribeSessions = dbService.subscribeToCollection('sessions', activeUid, (updatedSessions) => {
+      if (isMounted && updatedSessions && Array.isArray(updatedSessions)) {
+        setSessions(updatedSessions);
+      }
+    });
+
+    const unsubscribeVehicles = dbService.subscribeToCollection('vehicleRecords', activeUid, (updatedVehicles) => {
+      if (isMounted && updatedVehicles && Array.isArray(updatedVehicles)) {
+        setVehicleRecords(updatedVehicles);
+      }
+    });
+
+    // 2. Polling de respaldo cada 3 segundos para asegurar refresco inmediato en móviles y otras pantallas
+    const syncTimer = setInterval(async () => {
+      if (!isMounted) return;
+      if (isSupabaseConfigured()) {
+        try {
+          const freshSessions = await supabaseDbService.getCollection('sessions', activeUid);
+          if (isMounted && freshSessions && Array.isArray(freshSessions)) {
+            setSessions(prev => {
+              if (JSON.stringify(prev) !== JSON.stringify(freshSessions)) {
+                return freshSessions;
+              }
+              return prev;
+            });
+          }
+
+          const freshVehicles = await supabaseDbService.getCollection('vehicleRecords', activeUid);
+          if (isMounted && freshVehicles && Array.isArray(freshVehicles)) {
+            setVehicleRecords(prev => {
+              if (JSON.stringify(prev) !== JSON.stringify(freshVehicles)) {
+                return freshVehicles;
+              }
+              return prev;
+            });
+          }
+        } catch (e) {
+          // Ignorar errores esporádicos de red
+        }
+      }
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribeSessions === 'function') {
+        unsubscribeSessions();
+      }
+      if (typeof unsubscribeVehicles === 'function') {
+        unsubscribeVehicles();
+      }
+      clearInterval(syncTimer);
+    };
+  }, [fbUser?.uid]);
+
   // Guardar sesiones cuando cambien
   const saveSessionsToStorage = (newSessions: ParkingSession[]) => {
     setSessions(newSessions);
@@ -386,9 +516,8 @@ export default function App() {
     };
     const updated = [session, ...sessions];
     saveSessionsToStorage(updated);
-    if (fbUser) {
-      dbService.saveDocument('sessions', session.id, session, fbUser.uid);
-    }
+    const activeUid = fbUser?.uid || 'global';
+    dbService.saveDocument('sessions', session.id, session, activeUid);
   };
 
   // Callback: Registrar salida y cobro de vehículo
@@ -416,8 +545,9 @@ export default function App() {
       return s;
     });
     saveSessionsToStorage(updated);
-    if (fbUser && updatedSession) {
-      dbService.saveDocument('sessions', id, updatedSession, fbUser.uid);
+    const activeUid = fbUser?.uid || 'global';
+    if (updatedSession) {
+      dbService.saveDocument('sessions', id, updatedSession, activeUid);
     }
   };
 
@@ -425,18 +555,16 @@ export default function App() {
   const handleDeleteSession = (id: string) => {
     const updated = sessions.filter(s => s.id !== id);
     saveSessionsToStorage(updated);
-    if (fbUser) {
-      dbService.deleteDocument('sessions', id, fbUser.uid);
-    }
+    const activeUid = fbUser?.uid || 'global';
+    dbService.deleteDocument('sessions', id, activeUid);
   };
 
   // Callback: Actualizar o modificar una sesión de estacionamiento (Administrador)
   const handleUpdateSession = (updatedSession: ParkingSession) => {
     const updated = sessions.map(s => s.id === updatedSession.id ? updatedSession : s);
     saveSessionsToStorage(updated);
-    if (fbUser) {
-      dbService.saveDocument('sessions', updatedSession.id, updatedSession, fbUser.uid);
-    }
+    const activeUid = fbUser?.uid || 'global';
+    dbService.saveDocument('sessions', updatedSession.id, updatedSession, activeUid);
   };
 
   // Callback: Abrir caja
@@ -646,18 +774,16 @@ export default function App() {
     }
     setVehicleRecords(updated);
     localStorage.setItem('estacionamiento_vehicle_records', JSON.stringify(updated));
-    if (fbUser) {
-      dbService.saveDocument('vehicleRecords', norm, cleanRecord, fbUser.uid);
-    }
+    const activeUid = fbUser?.uid || 'global';
+    dbService.saveDocument('vehicleRecords', norm, cleanRecord, activeUid);
   };
 
   const handleDeleteVehicleRecord = (id: string) => {
     const updated = vehicleRecords.filter(v => v.id !== id && normalizePlate(v.plate) !== id);
     setVehicleRecords(updated);
     localStorage.setItem('estacionamiento_vehicle_records', JSON.stringify(updated));
-    if (fbUser) {
-      dbService.deleteDocument('vehicleRecords', id, fbUser.uid);
-    }
+    const activeUid = fbUser?.uid || 'global';
+    dbService.deleteDocument('vehicleRecords', id, activeUid);
   };
 
   const handleSyncFromHistory = () => {
@@ -752,11 +878,10 @@ export default function App() {
     const mergedList = Array.from(recordMap.values());
     setVehicleRecords(mergedList);
     localStorage.setItem('estacionamiento_vehicle_records', JSON.stringify(mergedList));
-    if (fbUser) {
-      mergedList.forEach(rec => {
-        dbService.saveDocument('vehicleRecords', rec.id, rec, fbUser.uid);
-      });
-    }
+    const activeUid = fbUser?.uid || 'global';
+    mergedList.forEach(rec => {
+      dbService.saveDocument('vehicleRecords', rec.id, rec, activeUid);
+    });
   };
 
   // Callback: Guardar lista de usuarios administrados
@@ -1168,6 +1293,17 @@ export default function App() {
               title="Bloquear Terminal"
             >
               <Lock className="w-4 h-4 text-blue-500" />
+            </button>
+
+            {/* Botón Asistente IA */}
+            <button
+              onClick={() => setShowAIChatModal(true)}
+              className="px-3 py-1.5 rounded-xl border border-blue-800/80 bg-blue-950/60 hover:bg-blue-900/60 text-blue-300 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer shadow-lg shadow-blue-950/40"
+              title="Abrir Asistente Virtual IA (Historial en Supabase)"
+            >
+              <Bot className="w-4 h-4 text-blue-400 animate-pulse" />
+              <span className="hidden md:inline">Chat IA</span>
+              <Sparkles className="w-3 h-3 text-amber-400" />
             </button>
 
             {/* Botón de Configuración Supabase */}
@@ -1713,6 +1849,35 @@ export default function App() {
         isOpen={showSupabaseModal}
         onClose={() => setShowSupabaseModal(false)}
       />
+
+      {/* Modal y Sincronización de Chat IA con Supabase (historial_chats) */}
+      <AIChatModal
+        isOpen={showAIChatModal}
+        onClose={() => setShowAIChatModal(false)}
+        userId={fbUser?.uid || 'global'}
+        userEmail={fbUser?.email}
+        contextData={{
+          activeCount,
+          capacity,
+          activeVehicles: sessions.filter(s => s.status === 'active').map(s => s.plate),
+          isCashOpen: cashSessions.some(s => s.status === 'open')
+        }}
+      />
+
+      {/* Botón Flotante de Acceso Rápido al Asistente IA */}
+      <button
+        onClick={() => setShowAIChatModal(true)}
+        className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white p-3.5 rounded-2xl shadow-2xl shadow-blue-900/60 flex items-center gap-2.5 transition-all transform hover:scale-105 active:scale-95 border border-blue-400/30 cursor-pointer group"
+        title="Abrir Chat Asistente IA (Sincronizado con Supabase)"
+      >
+        <div className="relative">
+          <Bot className="w-6 h-6 text-white" />
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-900 animate-ping"></span>
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-900"></span>
+        </div>
+        <span className="font-bold text-xs uppercase tracking-wider hidden sm:inline">Asistente IA</span>
+        <Sparkles className="w-3.5 h-3.5 text-amber-300 group-hover:rotate-12 transition-transform" />
+      </button>
 
     </div>
   );

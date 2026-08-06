@@ -344,6 +344,14 @@ export const dbService = {
     }
 
     return { parking: foundParking, wash: foundWash };
+  },
+
+  // Suscribirse a cambios en tiempo real en la colección
+  subscribeToCollection: (collectionName: string, userId: string, onUpdate: (docs: any[]) => void) => {
+    if (isSupabaseConfigured()) {
+      return supabaseDbService.subscribeToCollection(collectionName, userId, onUpdate);
+    }
+    return () => {};
   }
 };
 

@@ -1,10 +1,17 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import ErrorBoundary from './components/ErrorBoundary.tsx';
 import './index.css';
 
+// Prevención de cuelgues globales por rechazos de promesas de bases de datos no capturadas
+window.addEventListener('unhandledrejection', (event) => {
+  console.warn('[Global] Promesa no capturada ignorada para prevenir pantalla blanca:', event.reason);
+  event.preventDefault();
+});
+
 // Register Service Worker for Android & iOS PWA installation support
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+if ('serviceWorker' in navigator && (process.env.NODE_ENV === 'production' || (import.meta as any).env?.PROD)) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((reg) => {
@@ -18,6 +25,9 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );
+

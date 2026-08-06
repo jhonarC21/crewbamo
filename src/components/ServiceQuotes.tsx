@@ -9,10 +9,10 @@ import { formatCurrency, formatPlate, normalizePlate, getVehicleTypeLabel } from
 interface ServiceQuotesProps {
   quotes: ServiceQuote[];
   onSaveQuote: (quote: ServiceQuote) => void;
-  onUpdateQuoteStatus: (quoteId: string, status: ServiceQuote['status']) => void;
+  onUpdateQuoteStatus?: (quoteId: string, status: ServiceQuote['status']) => void;
   onDeleteQuote: (quoteId: string) => void;
   inventory: InventoryItem[];
-  washPackages: WashPackage[];
+  washPackages?: WashPackage[];
   settings: TariffSettings;
   onPrintTicket?: (ticketData: any) => void;
 }
@@ -20,10 +20,10 @@ interface ServiceQuotesProps {
 export const ServiceQuotes: React.FC<ServiceQuotesProps> = ({
   quotes,
   onSaveQuote,
-  onUpdateQuoteStatus,
+  onUpdateQuoteStatus = () => {},
   onDeleteQuote,
   inventory,
-  washPackages,
+  washPackages = [],
   settings,
   onPrintTicket
 }) => {
