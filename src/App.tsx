@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ParkingSession, TariffSettings, CashSession, PaymentMethod, InventoryItem, AccessorySale, AppUser, UserRole, ServiceBooking, ServiceQuote, NightSubscription, VehicleRecord, VehicleType } from './types';
+import { ParkingSession, TariffSettings, CashSession, PaymentMethod, InventoryItem, AccessorySale, AppUser, UserRole, ServiceBooking, ServiceQuote, NightSubscription, VehicleRecord } from './types';
 import { getSeedSessions, getDefaultTariffSettings, getSeedCashSessions, getSeedInventoryItems, getSeedAccessorySales, getSeedBookings, getSeedQuotes, getSeedNightSubscriptions, getSeedVehicleRecords, normalizePlate, formatPlate } from './utils/parkingUtils';
 import Dashboard from './components/Dashboard';
 import ActiveParking from './components/ActiveParking';
@@ -392,73 +392,42 @@ export default function App() {
     const activeUid = fbUser?.uid || 'global';
     let isMounted = true;
 
-    // 1. Suscripciones en tiempo real para todas las colecciones principales
-    const unsubs = [
-      dbService.subscribeToCollection('sessions', activeUid, (docs) => {
-        if (isMounted && docs && Array.isArray(docs)) setSessions(docs);
-      }),
-      dbService.subscribeToCollection('vehicleRecords', activeUid, (docs) => {
-        if (isMounted && docs && Array.isArray(docs)) setVehicleRecords(docs);
-      }),
-      dbService.subscribeToCollection('bookings', activeUid, (docs) => {
-        if (isMounted && docs && Array.isArray(docs)) setBookings(docs);
-      }),
-      dbService.subscribeToCollection('quotes', activeUid, (docs) => {
-        if (isMounted && docs && Array.isArray(docs)) setQuotes(docs as ServiceQuote[]);
-      }),
-      dbService.subscribeToCollection('nightSubscriptions', activeUid, (docs) => {
-        if (isMounted && docs && Array.isArray(docs)) setNightSubscriptions(docs as NightSubscription[]);
-      }),
-      dbService.subscribeToCollection('cashSessions', activeUid, (docs) => {
-        if (isMounted && docs && Array.isArray(docs)) setCashSessions(docs);
-      }),
-      dbService.subscribeToCollection('inventory', activeUid, (docs) => {
-        if (isMounted && docs && Array.isArray(docs)) setInventory(docs);
-      }),
-      dbService.subscribeToCollection('accessorySales', activeUid, (docs) => {
-        if (isMounted && docs && Array.isArray(docs)) setAccessorySales(docs);
-      })
-    ];
+    // 1. Suscripción vía Supabase Realtime para sesiones y lista de vehículos
+    const unsubscribeSessions = dbService.subscribeToCollection('sessions', activeUid, (updatedSessions) => {
+      if (isMounted && updatedSessions && Array.isArray(updatedSessions)) {
+        setSessions(updatedSessions);
+      }
+    });
+
+    const unsubscribeVehicles = dbService.subscribeToCollection('vehicleRecords', activeUid, (updatedVehicles) => {
+      if (isMounted && updatedVehicles && Array.isArray(updatedVehicles)) {
+        setVehicleRecords(updatedVehicles);
+      }
+    });
 
     // 2. Polling de respaldo cada 3 segundos para asegurar refresco inmediato en móviles y otras pantallas
     const syncTimer = setInterval(async () => {
       if (!isMounted) return;
       if (isSupabaseConfigured()) {
         try {
-          const [s, vr, bk, q, ns, cs, inv, sa] = await Promise.all([
-            supabaseDbService.getCollection('sessions', activeUid),
-            supabaseDbService.getCollection('vehicleRecords', activeUid),
-            supabaseDbService.getCollection('bookings', activeUid),
-            supabaseDbService.getCollection('quotes', activeUid),
-            supabaseDbService.getCollection('nightSubscriptions', activeUid),
-            supabaseDbService.getCollection('cashSessions', activeUid),
-            supabaseDbService.getCollection('inventory', activeUid),
-            supabaseDbService.getCollection('accessorySales', activeUid)
-          ]);
+          const freshSessions = await supabaseDbService.getCollection('sessions', activeUid);
+          if (isMounted && freshSessions && Array.isArray(freshSessions)) {
+            setSessions(prev => {
+              if (JSON.stringify(prev) !== JSON.stringify(freshSessions)) {
+                return freshSessions;
+              }
+              return prev;
+            });
+          }
 
-          if (isMounted && s && Array.isArray(s)) {
-            setSessions(prev => JSON.stringify(prev) !== JSON.stringify(s) ? s : prev);
-          }
-          if (isMounted && vr && Array.isArray(vr)) {
-            setVehicleRecords(prev => JSON.stringify(prev) !== JSON.stringify(vr) ? (vr as VehicleRecord[]) : prev);
-          }
-          if (isMounted && bk && Array.isArray(bk)) {
-            setBookings(prev => JSON.stringify(prev) !== JSON.stringify(bk) ? bk : prev);
-          }
-          if (isMounted && q && Array.isArray(q)) {
-            setQuotes(prev => JSON.stringify(prev) !== JSON.stringify(q) ? (q as ServiceQuote[]) : prev);
-          }
-          if (isMounted && ns && Array.isArray(ns)) {
-            setNightSubscriptions(prev => JSON.stringify(prev) !== JSON.stringify(ns) ? (ns as NightSubscription[]) : prev);
-          }
-          if (isMounted && cs && Array.isArray(cs)) {
-            setCashSessions(prev => JSON.stringify(prev) !== JSON.stringify(cs) ? cs : prev);
-          }
-          if (isMounted && inv && Array.isArray(inv)) {
-            setInventory(prev => JSON.stringify(prev) !== JSON.stringify(inv) ? inv : prev);
-          }
-          if (isMounted && sa && Array.isArray(sa)) {
-            setAccessorySales(prev => JSON.stringify(prev) !== JSON.stringify(sa) ? sa : prev);
+          const freshVehicles = await supabaseDbService.getCollection('vehicleRecords', activeUid);
+          if (isMounted && freshVehicles && Array.isArray(freshVehicles)) {
+            setVehicleRecords(prev => {
+              if (JSON.stringify(prev) !== JSON.stringify(freshVehicles)) {
+                return freshVehicles;
+              }
+              return prev;
+            });
           }
         } catch (e) {
           // Ignorar errores esporádicos de red
@@ -468,82 +437,15 @@ export default function App() {
 
     return () => {
       isMounted = false;
-      unsubs.forEach(unsub => {
-        if (typeof unsub === 'function') unsub();
-      });
+      if (typeof unsubscribeSessions === 'function') {
+        unsubscribeSessions();
+      }
+      if (typeof unsubscribeVehicles === 'function') {
+        unsubscribeVehicles();
+      }
       clearInterval(syncTimer);
     };
   }, [fbUser?.uid]);
-
-  // Callback / Helper: Auto-registrar o actualizar una patente en la base de datos unificada de vehículos
-  const autoRegisterVehicleRecord = (info: {
-    plate: string;
-    vehicleType?: VehicleType;
-    brand?: string;
-    model?: string;
-    color?: string;
-    year?: string;
-    clientName?: string;
-    clientRut?: string;
-    clientPhone?: string;
-    clientEmail?: string;
-    notes?: string;
-  }) => {
-    const norm = normalizePlate(info.plate);
-    if (!norm) return;
-
-    const activeUid = fbUser?.uid || 'global';
-    const existingIdx = vehicleRecords.findIndex(v => v.id === norm || normalizePlate(v.plate) === norm);
-    const now = new Date().toISOString();
-
-    let cleanRecord: VehicleRecord;
-
-    if (existingIdx >= 0) {
-      const existing = vehicleRecords[existingIdx];
-      cleanRecord = {
-        ...existing,
-        plate: formatPlate(norm),
-        vehicleType: info.vehicleType || existing.vehicleType || 'auto',
-        brand: info.brand || existing.brand || '',
-        model: info.model || existing.model || '',
-        color: info.color || existing.color || '',
-        year: info.year || existing.year || '',
-        clientName: info.clientName || existing.clientName || '',
-        clientRut: info.clientRut || existing.clientRut || '',
-        clientPhone: info.clientPhone || existing.clientPhone || '',
-        clientEmail: info.clientEmail || existing.clientEmail || '',
-        internalNotes: info.notes ? (existing.internalNotes ? `${existing.internalNotes} | ${info.notes}` : info.notes) : existing.internalNotes,
-        updatedAt: now
-      };
-    } else {
-      cleanRecord = {
-        id: norm,
-        plate: formatPlate(norm),
-        vehicleType: info.vehicleType || 'auto',
-        brand: info.brand || '',
-        model: info.model || '',
-        color: info.color || '',
-        year: info.year || '',
-        clientName: info.clientName || '',
-        clientRut: info.clientRut || '',
-        clientPhone: info.clientPhone || '',
-        clientEmail: info.clientEmail || '',
-        internalNotes: info.notes || '',
-        vipStatus: false,
-        alertFlag: false,
-        createdAt: now,
-        updatedAt: now
-      };
-    }
-
-    const updatedRecords = existingIdx >= 0 
-      ? vehicleRecords.map((r, i) => i === existingIdx ? cleanRecord : r)
-      : [cleanRecord, ...vehicleRecords];
-
-    setVehicleRecords(updatedRecords);
-    localStorage.setItem('estacionamiento_vehicle_records', JSON.stringify(updatedRecords));
-    dbService.saveDocument('vehicleRecords', norm, cleanRecord, activeUid);
-  };
 
   // Guardar sesiones cuando cambien
   const saveSessionsToStorage = (newSessions: ParkingSession[]) => {
@@ -562,21 +464,6 @@ export default function App() {
     saveSessionsToStorage(updated);
     const activeUid = fbUser?.uid || 'global';
     dbService.saveDocument('sessions', session.id, session, activeUid);
-
-    // Auto-registrar patente en la Base de Datos de Vehículos
-    if (newSession.plate) {
-      autoRegisterVehicleRecord({
-        plate: newSession.plate,
-        vehicleType: newSession.vehicleType,
-        brand: newSession.brand,
-        model: newSession.model,
-        color: newSession.color,
-        year: newSession.year,
-        clientName: newSession.clientName,
-        clientPhone: newSession.clientPhone,
-        notes: newSession.notes
-      });
-    }
   };
 
   // Callback: Registrar salida y cobro de vehículo
@@ -1084,17 +971,8 @@ export default function App() {
   const handleAddBooking = (booking: ServiceBooking) => {
     const updated = [booking, ...bookings];
     saveBookingsToStorage(updated);
-    const activeUid = fbUser?.uid || 'global';
-    dbService.saveDocument('bookings', booking.id, booking, activeUid);
-    if (booking.plate) {
-      autoRegisterVehicleRecord({
-        plate: booking.plate,
-        vehicleType: booking.vehicleType,
-        clientName: booking.clientName,
-        clientPhone: booking.clientPhone,
-        clientEmail: booking.clientEmail,
-        notes: booking.notes
-      });
+    if (fbUser) {
+      dbService.saveDocument('bookings', booking.id, booking, fbUser.uid);
     }
   };
 
@@ -1108,17 +986,17 @@ export default function App() {
       return b;
     });
     saveBookingsToStorage(updated);
-    const activeUid = fbUser?.uid || 'global';
-    if (updatedBooking) {
-      dbService.saveDocument('bookings', id, updatedBooking, activeUid);
+    if (fbUser && updatedBooking) {
+      dbService.saveDocument('bookings', id, updatedBooking, fbUser.uid);
     }
   };
 
   const handleDeleteBooking = (id: string) => {
     const updated = bookings.filter(b => b.id !== id);
     saveBookingsToStorage(updated);
-    const activeUid = fbUser?.uid || 'global';
-    dbService.deleteDocument('bookings', id, activeUid);
+    if (fbUser) {
+      dbService.deleteDocument('bookings', id, fbUser.uid);
+    }
   };
 
   const handleActivateSessionFromBooking = (booking: ServiceBooking) => {
@@ -1150,21 +1028,8 @@ export default function App() {
     const updated = exists ? quotes.map(q => q.id === quote.id ? quote : q) : [quote, ...quotes];
     setQuotes(updated);
     localStorage.setItem('estacionamiento_quotes', JSON.stringify(updated));
-    const activeUid = fbUser?.uid || 'global';
-    dbService.saveDocument('quotes', quote.id, quote, activeUid);
-
-    if (quote.plate) {
-      autoRegisterVehicleRecord({
-        plate: quote.plate,
-        vehicleType: quote.vehicleType,
-        brand: quote.brand,
-        model: quote.model,
-        clientName: quote.clientName,
-        clientRut: quote.clientRut,
-        clientPhone: quote.clientPhone,
-        clientEmail: quote.clientEmail,
-        notes: quote.notes
-      });
+    if (fbUser) {
+      dbService.saveDocument('quotes', quote.id, quote, fbUser.uid);
     }
   };
 
@@ -1172,8 +1037,9 @@ export default function App() {
     const updated = quotes.filter(q => q.id !== quoteId);
     setQuotes(updated);
     localStorage.setItem('estacionamiento_quotes', JSON.stringify(updated));
-    const activeUid = fbUser?.uid || 'global';
-    dbService.deleteDocument('quotes', quoteId, activeUid);
+    if (fbUser) {
+      dbService.deleteDocument('quotes', quoteId, fbUser.uid);
+    }
   };
 
   // Handlers para Suscripciones Nocturnas
@@ -1182,22 +1048,8 @@ export default function App() {
     const updated = exists ? nightSubscriptions.map(s => s.id === sub.id ? sub : s) : [sub, ...nightSubscriptions];
     setNightSubscriptions(updated);
     localStorage.setItem('estacionamiento_night_subs', JSON.stringify(updated));
-    const activeUid = fbUser?.uid || 'global';
-    dbService.saveDocument('nightSubscriptions', sub.id, sub, activeUid);
-
-    if (sub.plate) {
-      autoRegisterVehicleRecord({
-        plate: sub.plate,
-        vehicleType: sub.vehicleType,
-        brand: sub.brand,
-        model: sub.model,
-        color: sub.color,
-        clientName: sub.clientName,
-        clientRut: sub.clientRut,
-        clientPhone: sub.clientPhone,
-        clientEmail: sub.clientEmail,
-        notes: sub.notes
-      });
+    if (fbUser) {
+      dbService.saveDocument('nightSubscriptions', sub.id, sub, fbUser.uid);
     }
   };
 
@@ -1664,7 +1516,6 @@ export default function App() {
                 settings={settings}
                 isCashOpen={cashSessions.some(s => s.status === 'open')}
                 onSellAccessory={handleSellAccessory}
-                onRegisterVehiclePlate={autoRegisterVehicleRecord}
               />
             )}
 

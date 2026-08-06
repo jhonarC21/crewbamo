@@ -17,8 +17,7 @@ import {
   getDocs, 
   deleteDoc, 
   query, 
-  where,
-  onSnapshot
+  where 
 } from 'firebase/firestore';
 
 import firebaseAppletConfig from '../../firebase-applet-config.json';
@@ -180,33 +179,15 @@ export const authService = {
   }
 };
 
-// Sanitizar datos eliminando campos 'undefined' inapropiados para Firestore y Supabase
-function sanitizeData(obj: any): any {
-  if (obj === undefined) return null;
-  if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(sanitizeData);
-
-  const cleaned: any = {};
-  for (const key of Object.keys(obj)) {
-    const value = obj[key];
-    if (value !== undefined) {
-      cleaned[key] = sanitizeData(value);
-    }
-  }
-  return cleaned;
-}
-
 /**
  * Servicio de base de datos en la nube (Supabase / Firestore) con Fallback en localStorage por usuario
  */
 export const dbService = {
   // Guardar un documento asociado a un usuario
   saveDocument: async (collectionName: string, docId: string, data: any, userId: string): Promise<void> => {
-    const cleanData = sanitizeData(data);
-
     // 1. Guardar en Supabase si está configurado
     if (isSupabaseConfigured()) {
-      await supabaseDbService.saveDocument(collectionName, docId, cleanData, userId);
+      await supabaseDbService.saveDocument(collectionName, docId, data, userId);
     }
 
     // 2. Guardar en Firestore si está configurado
@@ -214,16 +195,16 @@ export const dbService = {
       try {
         const docRef = doc(db, `users/${userId}/${collectionName}`, docId);
         await setDoc(docRef, {
-          ...cleanData,
+          ...data,
           userId,
           updatedAt: new Date().toISOString()
         }, { merge: true });
       } catch (err) {
         console.error(`Error guardando documento en ${collectionName}:`, err);
-        saveLocalUserDocument(collectionName, docId, cleanData, userId);
+        saveLocalUserDocument(collectionName, docId, data, userId);
       }
     } else {
-      saveLocalUserDocument(collectionName, docId, cleanData, userId);
+      saveLocalUserDocument(collectionName, docId, data, userId);
     }
   },
 
@@ -365,36 +346,12 @@ export const dbService = {
     return { parking: foundParking, wash: foundWash };
   },
 
-  // Suscribirse a cambios en tiempo real en la colección (unifica datos en diferentes dispositivos)
+  // Suscribirse a cambios en tiempo real en la colección
   subscribeToCollection: (collectionName: string, userId: string, onUpdate: (docs: any[]) => void) => {
-    const unsubs: (() => void)[] = [];
-
     if (isSupabaseConfigured()) {
-      const unsubSupa = supabaseDbService.subscribeToCollection(collectionName, userId, onUpdate);
-      if (typeof unsubSupa === 'function') unsubs.push(unsubSupa);
+      return supabaseDbService.subscribeToCollection(collectionName, userId, onUpdate);
     }
-
-    if (isFirebaseConfigured && db) {
-      try {
-        const colRef = collection(db, `users/${userId}/${collectionName}`);
-        const unsubFS = onSnapshot(colRef, (snapshot) => {
-          const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          localStorage.setItem(`fb_cache_${userId}_${collectionName}`, JSON.stringify(docs));
-          onUpdate(docs);
-        }, (err) => {
-          console.warn(`[Firestore Realtime] Error en ${collectionName}:`, err);
-        });
-        unsubs.push(unsubFS);
-      } catch (err) {
-        console.warn(`[Firestore Realtime] Excepción al suscribir a ${collectionName}:`, err);
-      }
-    }
-
-    return () => {
-      unsubs.forEach(fn => {
-        try { fn(); } catch (e) {}
-      });
-    };
+    return () => {};
   }
 };
 
