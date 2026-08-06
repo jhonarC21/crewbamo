@@ -468,14 +468,14 @@ export default function TariffsConfig({
 
             <button
               onClick={() => {
-                if (confirm('¿Está seguro de reiniciar la base de datos local? Esto eliminará todos los registros actuales y cargará los vehículos demostrativos.')) {
+                if (confirm('¿Está seguro de vaciar la base de datos local? Esto eliminará todos los registros actuales para dejar la aplicación completamente limpia y lista para operarse en vivo.')) {
                   onResetData();
                 }
               }}
               className="w-full bg-rose-950/40 hover:bg-rose-950/60 text-rose-400 border border-rose-900/50 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 mt-2 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              Restaurar Datos de Demostración
+              Vaciar y Limpiar Base de Datos
             </button>
           </div>
 

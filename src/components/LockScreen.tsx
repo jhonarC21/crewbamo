@@ -275,11 +275,11 @@ export default function LockScreen({ users, onUnlock, initialUser, companyLogo }
 
         </div>
 
-        {/* Demo Credential Assistant */}
+        {/* Access PIN Assistant */}
         <div className="mt-8 bg-slate-950/40 border border-slate-900/60 rounded-2xl p-4 text-center max-w-sm backdrop-blur-md">
           <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1.5 flex items-center justify-center gap-1">
             <Key className="w-3 h-3" />
-            <span>Credenciales Demo para Pruebas</span>
+            <span>PINs de Acceso Iniciales</span>
           </p>
           <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400 font-sans">
             <div className="bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-900/40">

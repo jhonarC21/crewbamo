@@ -63,63 +63,7 @@ interface CarWashManagementProps {
   onSellAccessory: (sale: Omit<AccessorySale, 'id' | 'timestamp'>) => void;
 }
 
-const SEED_WASHES: WashSession[] = [
-  {
-    id: 'wash-seed-1',
-    plate: 'KPDX45',
-    vehicleType: 'auto',
-    clientName: 'Alejandro Toledo',
-    clientPhone: '+56987654321',
-    packageId: 'wp-simple',
-    packageName: '🧼 Lavado Simple (Eco)',
-    price: 5000,
-    status: 'espera',
-    entryTime: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    notes: 'Solicitó especial cuidado con espejos laterales.',
-    washerName: 'Juan Carlos'
-  },
-  {
-    id: 'wash-seed-2',
-    plate: 'BBRR90',
-    vehicleType: 'suv',
-    clientName: 'Carolina Mendoza',
-    packageId: 'wp-full',
-    packageName: '✨ Lavado Full (Premium)',
-    price: 12000,
-    status: 'lavando',
-    entryTime: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    startTime: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    washerName: 'Andrés López'
-  },
-  {
-    id: 'wash-seed-3',
-    plate: 'LLYY12',
-    vehicleType: 'moto',
-    clientName: 'Martín Silva',
-    packageId: 'wp-simple',
-    packageName: '🧼 Lavado Simple (Eco)',
-    price: 3500,
-    status: 'secando',
-    entryTime: new Date(Date.now() - 50 * 60 * 1000).toISOString(),
-    startTime: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    washerName: 'Pedro Díaz'
-  },
-  {
-    id: 'wash-seed-4',
-    plate: 'HJKW88',
-    vehicleType: 'furgon',
-    clientName: 'Repartos Express',
-    packageId: 'wp-full',
-    packageName: '✨ Lavado Full (Premium)',
-    price: 15000,
-    status: 'listo',
-    entryTime: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-    startTime: new Date(Date.now() - 70 * 60 * 1000).toISOString(),
-    readyTime: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
-    notes: 'Dejar llaves en recepción al terminar.',
-    washerName: 'Juan Carlos'
-  }
-];
+const SEED_WASHES: WashSession[] = [];
 
 export default function CarWashManagement({
   sessions,
@@ -171,11 +115,11 @@ export default function CarWashManagement({
       try {
         setWashSessions(JSON.parse(storedWashes));
       } catch (e) {
-        setWashSessions(SEED_WASHES);
+        setWashSessions([]);
       }
     } else {
-      setWashSessions(SEED_WASHES);
-      localStorage.setItem('estacionamiento_washes', JSON.stringify(SEED_WASHES));
+      setWashSessions([]);
+      localStorage.setItem('estacionamiento_washes', JSON.stringify([]));
     }
 
     const storedPackages = localStorage.getItem('estacionamiento_wash_packages');

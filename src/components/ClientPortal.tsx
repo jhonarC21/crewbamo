@@ -1198,33 +1198,17 @@ export default function ClientPortal({
               )}
             </AnimatePresence>
 
-            {/* DEMO INSTRUCTIONS DISPLAY FOR CLIENT TESTING */}
+            {/* INSTRUCTIONS DISPLAY FOR CLIENT SEARCH */}
             {!searchPlate.trim() && (
               <div className="bg-slate-900/30 p-5 rounded-2xl border border-slate-850/80 space-y-4 text-center py-8">
                 <div className="w-12 h-12 bg-blue-950/40 text-blue-400 rounded-full flex items-center justify-center mx-auto border border-blue-900/30">
                   <QrCode className="w-5 h-5" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-white">Prueba el Acceso del Cliente</h3>
+                  <h3 className="text-sm font-bold text-white">Consulta tu Vehículo en Tiempo Real</h3>
                   <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
-                    Para probar el portal de clientes, ingrese una patente activa en el sistema principal (por ejemplo, <strong className="text-blue-400 font-mono">KPDX45</strong>, <strong className="text-blue-400 font-mono">BBRR90</strong> o <strong className="text-blue-400 font-mono">LLYY12</strong>).
+                    Ingrese la patente del vehículo ingresado al estacionamiento para consultar su estado, tiempo transcurrido, cobro actual o estado de lavado.
                   </p>
-                </div>
-                <div className="flex flex-col gap-1.5 max-w-xs mx-auto pt-2">
-                  <button
-                    onClick={() => setSearchPlate('KPDX45')}
-                    className="px-3 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl text-[11px] font-mono font-bold text-slate-300 flex justify-between items-center"
-                  >
-                    <span>Patente: KPDX45 (Auto + Lavado)</span>
-                    <ChevronRight className="w-4 h-4 text-slate-500" />
-                  </button>
-                  <button
-                    onClick={() => setSearchPlate('BBRR90')}
-                    className="px-3 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl text-[11px] font-mono font-bold text-slate-300 flex justify-between items-center"
-                  >
-                    <span>Patente: BBRR90 (SUV + Lavando)</span>
-                    <ChevronRight className="w-4 h-4 text-slate-500" />
-                  </button>
                 </div>
               </div>
             )}

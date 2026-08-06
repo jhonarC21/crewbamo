@@ -179,15 +179,33 @@ export const authService = {
   }
 };
 
+// Sanitizar datos eliminando campos 'undefined' inapropiados para Firestore y Supabase
+function sanitizeData(obj: any): any {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeData);
+
+  const cleaned: any = {};
+  for (const key of Object.keys(obj)) {
+    const value = obj[key];
+    if (value !== undefined) {
+      cleaned[key] = sanitizeData(value);
+    }
+  }
+  return cleaned;
+}
+
 /**
  * Servicio de base de datos en la nube (Supabase / Firestore) con Fallback en localStorage por usuario
  */
 export const dbService = {
   // Guardar un documento asociado a un usuario
   saveDocument: async (collectionName: string, docId: string, data: any, userId: string): Promise<void> => {
+    const cleanData = sanitizeData(data);
+
     // 1. Guardar en Supabase si está configurado
     if (isSupabaseConfigured()) {
-      await supabaseDbService.saveDocument(collectionName, docId, data, userId);
+      await supabaseDbService.saveDocument(collectionName, docId, cleanData, userId);
     }
 
     // 2. Guardar en Firestore si está configurado
@@ -195,16 +213,16 @@ export const dbService = {
       try {
         const docRef = doc(db, `users/${userId}/${collectionName}`, docId);
         await setDoc(docRef, {
-          ...data,
+          ...cleanData,
           userId,
           updatedAt: new Date().toISOString()
         }, { merge: true });
       } catch (err) {
         console.error(`Error guardando documento en ${collectionName}:`, err);
-        saveLocalUserDocument(collectionName, docId, data, userId);
+        saveLocalUserDocument(collectionName, docId, cleanData, userId);
       }
     } else {
-      saveLocalUserDocument(collectionName, docId, data, userId);
+      saveLocalUserDocument(collectionName, docId, cleanData, userId);
     }
   },
 

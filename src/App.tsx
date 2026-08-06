@@ -252,16 +252,10 @@ export default function App() {
     try {
       const activeUid = uid || 'global';
 
-      // 1. Sessions - Consulta SELECT obligatoria a la base de datos online
+      // 1. Sessions
       try {
         const s = await dbService.getCollection('sessions', activeUid);
-        if (s && Array.isArray(s)) {
-          setSessions(s);
-        } else if (!isSupabaseConfigured()) {
-          setSessions(getSeedSessions());
-        } else {
-          setSessions([]);
-        }
+        setSessions(s && Array.isArray(s) ? s : []);
       } catch (err) {
         console.warn("Error cargando sessions desde la nube:", err);
         setSessions([]);
@@ -301,113 +295,65 @@ export default function App() {
 
       // 4. Cash Sessions
       try {
-        let cs = await dbService.getCollection('cashSessions', activeUid);
-        if (!cs || cs.length === 0) {
-          const seedCash = getSeedCashSessions();
-          seedCash.forEach(session => {
-            dbService.saveDocument('cashSessions', session.id, session, activeUid).catch(() => {});
-          });
-          cs = seedCash;
-        }
-        setCashSessions(cs);
+        const cs = await dbService.getCollection('cashSessions', activeUid);
+        setCashSessions(cs && Array.isArray(cs) ? cs : []);
       } catch (err) {
         console.warn("Error cargando cashSessions:", err);
-        setCashSessions(getSeedCashSessions());
+        setCashSessions([]);
       }
 
       // 5. Inventory
       try {
-        let inv = await dbService.getCollection('inventory', activeUid);
-        if (!inv || inv.length === 0) {
-          const seedInv = getSeedInventoryItems();
-          seedInv.forEach(item => {
-            dbService.saveDocument('inventory', item.id, item, activeUid).catch(() => {});
-          });
-          inv = seedInv;
-        }
-        setInventory(inv);
+        const inv = await dbService.getCollection('inventory', activeUid);
+        setInventory(inv && Array.isArray(inv) ? inv : []);
       } catch (err) {
         console.warn("Error cargando inventory:", err);
-        setInventory(getSeedInventoryItems());
+        setInventory([]);
       }
 
       // 6. Accessory Sales
       try {
-        let sales = await dbService.getCollection('accessorySales', activeUid);
-        if (!sales || sales.length === 0) {
-          const seedSales = getSeedAccessorySales();
-          seedSales.forEach(sale => {
-            dbService.saveDocument('accessorySales', sale.id, sale, activeUid).catch(() => {});
-          });
-          sales = seedSales;
-        }
-        setAccessorySales(sales);
+        const sales = await dbService.getCollection('accessorySales', activeUid);
+        setAccessorySales(sales && Array.isArray(sales) ? sales : []);
       } catch (err) {
         console.warn("Error cargando accessorySales:", err);
-        setAccessorySales(getSeedAccessorySales());
+        setAccessorySales([]);
       }
 
       // 7. Bookings
       try {
-        let bk = await dbService.getCollection('bookings', activeUid);
-        if (!bk || bk.length === 0) {
-          const seedBookings = getSeedBookings();
-          seedBookings.forEach(booking => {
-            dbService.saveDocument('bookings', booking.id, booking, activeUid).catch(() => {});
-          });
-          bk = seedBookings;
-        }
-        setBookings(bk);
+        const bk = await dbService.getCollection('bookings', activeUid);
+        setBookings(bk && Array.isArray(bk) ? bk : []);
       } catch (err) {
         console.warn("Error cargando bookings:", err);
-        setBookings(getSeedBookings());
+        setBookings([]);
       }
 
       // 8. Quotes
       try {
-        let qCol = await dbService.getCollection('quotes', activeUid);
-        if (!qCol || qCol.length === 0) {
-          const seedQ = getSeedQuotes();
-          seedQ.forEach(q => {
-            dbService.saveDocument('quotes', q.id, q, activeUid).catch(() => {});
-          });
-          qCol = seedQ;
-        }
-        setQuotes(qCol as ServiceQuote[]);
+        const qCol = await dbService.getCollection('quotes', activeUid);
+        setQuotes(qCol && Array.isArray(qCol) ? (qCol as ServiceQuote[]) : []);
       } catch (err) {
         console.warn("Error cargando quotes:", err);
-        setQuotes(getSeedQuotes());
+        setQuotes([]);
       }
 
       // 9. Night Subscriptions
       try {
-        let nsCol = await dbService.getCollection('nightSubscriptions', activeUid);
-        if (!nsCol || nsCol.length === 0) {
-          const seedNS = getSeedNightSubscriptions();
-          seedNS.forEach(ns => {
-            dbService.saveDocument('nightSubscriptions', ns.id, ns, activeUid).catch(() => {});
-          });
-          nsCol = seedNS;
-        }
-        setNightSubscriptions(nsCol as NightSubscription[]);
+        const nsCol = await dbService.getCollection('nightSubscriptions', activeUid);
+        setNightSubscriptions(nsCol && Array.isArray(nsCol) ? (nsCol as NightSubscription[]) : []);
       } catch (err) {
         console.warn("Error cargando nightSubscriptions:", err);
-        setNightSubscriptions(getSeedNightSubscriptions());
+        setNightSubscriptions([]);
       }
 
-      // 10. Vehicle Records (Base de Datos de Patentes) - SELECT obligatorio a Supabase
+      // 10. Vehicle Records (Base de Datos de Patentes)
       try {
         const vrCol = await dbService.getCollection('vehicleRecords', activeUid);
-        if (vrCol && Array.isArray(vrCol) && vrCol.length > 0) {
-          setVehicleRecords(vrCol as VehicleRecord[]);
-        } else if (vrCol && Array.isArray(vrCol) && vrCol.length === 0) {
-          setVehicleRecords([]);
-        } else {
-          setVehicleRecords(getSeedVehicleRecords());
-        }
+        setVehicleRecords(vrCol && Array.isArray(vrCol) ? (vrCol as VehicleRecord[]) : []);
       } catch (err) {
         console.warn("Error cargando vehicleRecords desde la nube:", err);
-        setVehicleRecords(getSeedVehicleRecords());
+        setVehicleRecords([]);
       }
 
       // 11. Users list
@@ -918,40 +864,36 @@ export default function App() {
     }
   };
 
-  // Callback: Restaurar base de datos a los datos demostrativos iniciales
+  // Callback: Vaciar base de datos y dejar la aplicación limpia para producción
   const handleResetData = async () => {
-    const seeds = getSeedSessions();
     const defaults = getDefaultTariffSettings();
-    const seedCash = getSeedCashSessions();
-    const seedInv = getSeedInventoryItems();
-    const seedSales = getSeedAccessorySales();
-    const seedBookings = getSeedBookings();
     
-    setSessions(seeds);
+    setSessions([]);
     setSettings(defaults);
     setCapacity(20);
-    setCashSessions(seedCash);
-    setInventory(seedInv);
-    setAccessorySales(seedSales);
-    setBookings(seedBookings);
+    setCashSessions([]);
+    setInventory([]);
+    setAccessorySales([]);
+    setBookings([]);
+    setQuotes([]);
+    setNightSubscriptions([]);
+    setVehicleRecords([]);
 
-    localStorage.setItem('estacionamiento_sessions', JSON.stringify(seeds));
+    localStorage.setItem('estacionamiento_sessions', JSON.stringify([]));
     localStorage.setItem('estacionamiento_settings', JSON.stringify(defaults));
     localStorage.setItem('estacionamiento_capacity', '20');
-    localStorage.setItem('estacionamiento_cash_sessions', JSON.stringify(seedCash));
-    localStorage.setItem('estacionamiento_inventory', JSON.stringify(seedInv));
-    localStorage.setItem('estacionamiento_accessory_sales', JSON.stringify(seedSales));
-    localStorage.setItem('estacionamiento_bookings', JSON.stringify(seedBookings));
+    localStorage.setItem('estacionamiento_cash_sessions', JSON.stringify([]));
+    localStorage.setItem('estacionamiento_inventory', JSON.stringify([]));
+    localStorage.setItem('estacionamiento_accessory_sales', JSON.stringify([]));
+    localStorage.setItem('estacionamiento_bookings', JSON.stringify([]));
+    localStorage.setItem('estacionamiento_quotes', JSON.stringify([]));
+    localStorage.setItem('estacionamiento_night_subscriptions', JSON.stringify([]));
+    localStorage.setItem('estacionamiento_vehicle_records', JSON.stringify([]));
+    localStorage.setItem('estacionamiento_washes', JSON.stringify([]));
 
-    if (fbUser) {
-      for (const s of seeds) await dbService.saveDocument('sessions', s.id, s, fbUser.uid);
-      await dbService.saveDocument('settings', 'config', defaults, fbUser.uid);
-      await dbService.saveDocument('capacity', 'config', { value: 20 }, fbUser.uid);
-      for (const c of seedCash) await dbService.saveDocument('cashSessions', c.id, c, fbUser.uid);
-      for (const i of seedInv) await dbService.saveDocument('inventory', i.id, i, fbUser.uid);
-      for (const sa of seedSales) await dbService.saveDocument('accessorySales', sa.id, sa, fbUser.uid);
-      for (const b of seedBookings) await dbService.saveDocument('bookings', b.id, b, fbUser.uid);
-    }
+    const activeUid = fbUser?.uid || 'global';
+    await dbService.saveDocument('settings', 'config', defaults, activeUid);
+    await dbService.saveDocument('capacity', 'config', { value: 20 }, activeUid);
   };
 
   // Callback: Importar datos JSON
