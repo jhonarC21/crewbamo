@@ -66,7 +66,25 @@ const initSupabaseClient = (cfg: SupabaseConfig): SupabaseClient | null => {
 export let supabase: SupabaseClient | null = initSupabaseClient(currentConfig);
 
 export const isSupabaseConfigured = (): boolean => {
-  return supabase !== null && !!currentConfig.supabaseUrl && !!currentConfig.supabaseAnonKey;
+  if (!supabase || !currentConfig.supabaseUrl || !currentConfig.supabaseAnonKey) {
+    return false;
+  }
+  const url = currentConfig.supabaseUrl.trim().toLowerCase();
+  const key = currentConfig.supabaseAnonKey.trim().toLowerCase();
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return false;
+  }
+  if (
+    url.includes('your_supabase') ||
+    url.includes('your-supabase') ||
+    url.includes('placeholder') ||
+    key.includes('your_supabase') ||
+    key.includes('your-supabase') ||
+    key.includes('placeholder')
+  ) {
+    return false;
+  }
+  return true;
 };
 
 export const getSupabaseConfig = () => {
@@ -128,7 +146,7 @@ CREATE POLICY "Acceso público lectura/escritura app_data" ON public.app_data
 export const supabaseDbService = {
   // Guardar/Actualizar documento en Supabase
   saveDocument: async (collectionName: string, docId: string, data: any, userId: string = 'global'): Promise<boolean> => {
-    if (!supabase) return false;
+    if (!isSupabaseConfigured() || !supabase) return false;
     try {
       const compositeId = `${userId}_${collectionName}_${docId}`;
       const payload = {
@@ -145,19 +163,19 @@ export const supabaseDbService = {
         .upsert(payload, { onConflict: 'id' });
 
       if (error) {
-        console.error(`Error guardando en Supabase [${collectionName}]:`, error);
+        console.warn(`[Supabase] No se pudo guardar en [${collectionName}]:`, error.message);
         return false;
       }
       return true;
-    } catch (err) {
-      console.error(`Excepción al guardar en Supabase [${collectionName}]:`, err);
+    } catch (err: any) {
+      console.warn(`[Supabase] Excepción al guardar en [${collectionName}]:`, err?.message || err);
       return false;
     }
   },
 
   // Obtener todos los documentos de una colección
   getCollection: async (collectionName: string, userId: string = 'global'): Promise<any[]> => {
-    if (!supabase) return [];
+    if (!isSupabaseConfigured() || !supabase) return [];
     try {
       const { data, error } = await supabase
         .from('app_data')
@@ -166,20 +184,20 @@ export const supabaseDbService = {
         .or(`user_id.eq.${userId},user_id.eq.global`);
 
       if (error) {
-        console.error(`Error consultando colección [${collectionName}] en Supabase:`, error);
+        console.warn(`[Supabase] No se pudo consultar colección [${collectionName}]:`, error.message);
         return [];
       }
 
       return data ? data.map(item => item.data) : [];
-    } catch (err) {
-      console.error(`Excepción al obtener colección [${collectionName}] en Supabase:`, err);
+    } catch (err: any) {
+      console.warn(`[Supabase] Excepción al obtener colección [${collectionName}]:`, err?.message || err);
       return [];
     }
   },
 
   // Eliminar documento
   deleteDocument: async (collectionName: string, docId: string, userId: string = 'global'): Promise<boolean> => {
-    if (!supabase) return false;
+    if (!isSupabaseConfigured() || !supabase) return false;
     try {
       const compositeId = `${userId}_${collectionName}_${docId}`;
       const { error } = await supabase
@@ -188,12 +206,12 @@ export const supabaseDbService = {
         .eq('id', compositeId);
 
       if (error) {
-        console.error(`Error eliminando de Supabase [${collectionName}]:`, error);
+        console.warn(`[Supabase] No se pudo eliminar de [${collectionName}]:`, error.message);
         return false;
       }
       return true;
-    } catch (err) {
-      console.error(`Excepción al eliminar en Supabase [${collectionName}]:`, err);
+    } catch (err: any) {
+      console.warn(`[Supabase] Excepción al eliminar de [${collectionName}]:`, err?.message || err);
       return false;
     }
   },
@@ -204,7 +222,7 @@ export const supabaseDbService = {
     userId: string = 'global', 
     onUpdate: (docs: any[]) => void
   ) => {
-    if (!supabase) return () => {};
+    if (!isSupabaseConfigured() || !supabase) return () => {};
 
     const channelName = `realtime:${collectionName}:${userId}`;
     const channel = supabase
@@ -234,7 +252,7 @@ export const supabaseDbService = {
 
   // Búsqueda pública por patente en tiempo real (para portal de clientes desde código QR)
   searchSessionByPlate: async (plateText: string): Promise<{ parking: any | null; wash: any | null }> => {
-    if (!supabase) return { parking: null, wash: null };
+    if (!isSupabaseConfigured() || !supabase) return { parking: null, wash: null };
     const cleanPlate = plateText.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanPlate) return { parking: null, wash: null };
 
@@ -267,8 +285,8 @@ export const supabaseDbService = {
       }
 
       return { parking: foundParking, wash: foundWash };
-    } catch (err) {
-      console.error("Error buscando por patente en Supabase:", err);
+    } catch (err: any) {
+      console.warn("[Supabase] Error buscando por patente:", err?.message || err);
       return { parking: null, wash: null };
     }
   }
